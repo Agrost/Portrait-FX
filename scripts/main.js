@@ -10,6 +10,8 @@ import { createPortraitFxRuntime } from "./tokenmagic-runtime.js";
 import { GmPortraitPreview } from "./gm-preview.js";
 import { savedTokenMagicMacros, cleanTokenMagicParams } from "./tokenmagic-data.js";
 import { viewerFxFactory } from "./fx-availability.js";
+import { HEIGHT_PRESETS } from "./height-presets.js";
+import { ActorCategories } from "./actor-categories.js";
 
 let store;
 let stage;
@@ -18,6 +20,7 @@ let view;
 let playerControls;
 let sidebarLayout;
 let favorites;
+let categories;
 let preview;
 
 function clientKey() { return `${game.world?.id ?? "world"}:${game.user.id}`; }
@@ -26,7 +29,8 @@ function readFavorites(value = game.settings.get(SETTINGS_ID, "actorFavorites"))
 function renderWorld() {
   if (!store || !view) return;
   playerControls?.render(store.state);
-  const projected = view.project(store.state, { usePositions: !game.user.isGM, useMirrors: !game.user.isGM });
+  const projected = view.project(panel?.projectAppearance(store.state) ?? store.state,
+    { usePositions: !game.user.isGM, useMirrors: !game.user.isGM });
   if (!game.user.isGM && playerControls) projected.bottom = Math.max(projected.bottom, playerControls.bottomInset());
   stage.render(preview ? preview.project(projected, store.state) : projected);
 }
@@ -47,6 +51,18 @@ function openPanel() {
 }
 
 Hooks.once("init", () => {
+  game.settings.register(MODULE_ID, "actorCategories", {
+    scope: "world", config: false, type: Object, default: { categories: [], assignments: {} },
+    onChange: (value) => categories?.receive(value),
+  });
+  for (const preset of HEIGHT_PRESETS) {
+    game.settings.register(MODULE_ID, preset.key, {
+      name: `Высота портрета: ${preset.label.toLowerCase()}, px`,
+      hint: "Размер при добавлении персонажа. Высота уже добавленных портретов не меняется.",
+      scope: "world", config: true, type: Number, default: preset.value,
+      range: { min: 100, max: 700, step: 1 }, onChange: () => panel?.render(),
+    });
+  }
   game.settings.register(SETTINGS_ID, "tokenMagicMacros", {
     scope: "world", config: false, type: Array, default: [],
     onChange: () => panel?.render(),
@@ -76,7 +92,7 @@ Hooks.once("init", () => {
     restricted: false, onDown: () => { if (game.user.isGM) panel?.toggle(); else playerControls?.toggle(); return true; },
   });
   game.modules.get(MODULE_ID).api = { open: openPanel, close: () => panel?.close(), refresh: () => {
-    if (!game.user.isGM) panel?.close();
+    if (!game.user.isGM) { panel?.close(); panel?.picker?.close(); }
     view?.receive(readClientView());
     favorites?.receive(readFavorites());
     renderWorld();
@@ -91,7 +107,8 @@ Hooks.once("ready", () => {
     canOpenPortrait: () => game.user.isGM,
     onOpenPortrait: (id) => panel?.openPortrait(id),
     onPositionChange: (id, x) => {
-      const operation = game.user.isGM ? store.editPortrait(id, (portrait) => { portrait.x = x; }) : view.setPosition(id, x);
+      const operation = game.user.isGM ? store.editPortrait(id, (portrait) => { portrait.x = x; })
+        : view.setPosition(id, x, store.state.positionEpoch);
       operation.catch(() => {});
     },
     onFilterExpired: (portraitId, effectId, kind = "filter") => {
@@ -129,9 +146,19 @@ Hooks.once("ready", () => {
     onChange: () => panel?.updateFavoriteButtons(),
     onError: (error) => reportError("Не удалось сохранить избранных персонажей.", error),
   });
+  categories = new ActorCategories({
+    read: () => game.settings.get(MODULE_ID, "actorCategories"),
+    write: (next) => game.settings.set(MODULE_ID, "actorCategories", next),
+    canWrite: () => game.user.isGM,
+    onChange: () => panel?.picker?.render(),
+    onError: (error) => reportError("Не удалось сохранить категории персонажей.", error),
+  });
   panel = new PortraitPanel(store, {
+    onAppearancePreview: renderWorld,
+    readHeightPresets: () => Object.fromEntries(HEIGHT_PRESETS.map(({ id, key }) =>
+      [id, game.settings.get(MODULE_ID, key)])),
     effectsAvailable: !!factory,
-    favorites, preview,
+    favorites, categories, preview,
     saveMacro: async (name, source, params) => {
       if (!game.user.isGM) throw new Error("Добавлять макросы может только GM.");
       if (savedTokenMagicMacros().some((macro) => macro.name === name)) throw new Error("Макрос с таким названием уже сохранён. Выбери другое название.");
@@ -161,8 +188,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
   };
 });
 
-for (const hook of ["createActor", "deleteActor"]) Hooks.on(hook, () => panel?.render());
+for (const hook of ["createActor", "deleteActor", "updateActor"]) Hooks.on(hook, () => { panel?.render(); panel?.picker?.render(); });
 window.addEventListener("resize", renderWorld);
 for (const hook of ["collapseSidebar", "renderSidebar"]) Hooks.on(hook, () => sidebarLayout?.schedule());
 
-window.addEventListener("beforeunload", () => { sidebarLayout?.destroy(); panel?.close(); playerControls?.destroy(); stage?.destroy(); });
+window.addEventListener("beforeunload", () => { sidebarLayout?.destroy(); panel?.close(); panel?.picker?.close(); playerControls?.destroy(); stage?.destroy(); });

@@ -88,6 +88,47 @@ test("horizontal movement moves a single portrait instead of changing roster ord
   assert.equal(read().portraits[0].x, 25);
 });
 
+test("show all reveals and distributes the entire roster in one write without changing appearance or effects", async () => {
+  const { store, read, writes } = fixture();
+  await store.change((state) => {
+    for (const id of ["a", "b", "c"]) state.portraits.push(newPortrait({ id, name: id, img: `${id}.png` }, id));
+    state.portraits.forEach((p, i) => { p.x = 20 + i; p.visible = i === 0; p.offsetY = i * 50; });
+    state.portraits[1].tokenmagic.enabled.glow = true;
+  });
+  const before = structuredClone(read());
+  const writeCount = writes.length;
+  await store.setAllVisible(true);
+  assert.equal(writes.length, writeCount + 1);
+  const expected = before.portraits.map((p) => ({ ...p, x: null, visible: true }));
+  assert.deepEqual(read().portraits, expected);
+});
+
+test("roster drag order survives reload and changes screen slots while effects and vertical offsets follow actors", async () => {
+  const { store, read } = fixture();
+  await store.change((state) => {
+    for (const id of ["a", "b", "c"]) state.portraits.push(newPortrait({ id, name: id, img: `${id}.png` }, id));
+    state.portraits[0].x = 80;
+    state.portraits[1].visible = false;
+    state.portraits[2].height = 620;
+    state.portraits[2].offsetY = -150;
+    state.portraits[2].filter.enabled.neon = true;
+  });
+  await store.reorderPortrait("c", "a");
+  assert.deepEqual(read().portraits.map((p) => p.id), ["c", "a", "b"]);
+  assert.ok(read().portraits.every((p) => p.x === null));
+  const client = new PortraitStore({ read, write: () => assert.fail(), canWrite: () => false });
+  assert.equal(client.state.portraits[0].height, 620);
+  assert.equal(client.state.portraits[0].offsetY, -150);
+  assert.equal(client.state.portraits[0].filter.enabled.neon, true);
+  await store.reorderPortrait("c", "b", true);
+  assert.deepEqual(read().portraits.map((p) => p.id), ["a", "b", "c"]);
+  assert.equal(read().portraits[1].visible, false);
+  const stable = structuredClone(read().portraits);
+  await store.reorderPortrait("c", "c"); await store.reorderPortrait("missing", "a");
+  assert.deepEqual(read().portraits, stable);
+  await assert.rejects(client.reorderPortrait("c", "a"), /только GM/);
+});
+
 test("arrange resets visible manual positions and retains hidden positions and effects", async () => {
   const { store, read } = fixture();
   await store.change((state) => {

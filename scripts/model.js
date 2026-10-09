@@ -3,7 +3,7 @@ import { tokenMagicRegistry } from "./tokenmagic-data.js";
 export const MODULE_ID = "sanos-portrait-fx";
 export const SETTINGS_ID = "fx-portraits";
 export const STATE_KEY = "portraits";
-export const INITIAL_STATE = { schemaVersion: 3, revision: 0, bottom: 80, portraits: [] };
+export const INITIAL_STATE = { schemaVersion: 3, revision: 0, positionEpoch: 0, bottom: 80, portraits: [] };
 export const KINDS = ["filter", "particle", "tokenmagic"];
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -53,12 +53,14 @@ export function normalizeState(value) {
       src: String(raw.src ?? ""), visible: raw.visible !== false && record.enabled !== false,
       height: boundedNumber(record.schemaVersion !== 3 && (raw.height === 400 || (record.schemaVersion !== 2 && raw.height === 320)) ? 500 : raw.height, 100, 700, 500),
       x: raw.x === null || raw.x === undefined ? null : boundedNumber(raw.x, 0, 100, 50),
+      offsetY: boundedNumber(raw.offsetY ?? 0, -450, 450, 0),
       mirrored: raw.mirrored === true,
       filter: effectState(raw.filter), particle: effectState(raw.particle), tokenmagic: effectState(raw.tokenmagic),
     });
   }
   return {
     revision: boundedNumber(record.revision, 0, Number.MAX_SAFE_INTEGER, 0),
+    positionEpoch: Math.floor(boundedNumber(record.positionEpoch ?? 0, 0, Number.MAX_SAFE_INTEGER, 0)),
     schemaVersion: 3,
     bottom: boundedNumber(record.bottom, 0, 450, 80), portraits,
   };
@@ -67,7 +69,7 @@ export function normalizeState(value) {
 export function newPortrait(actor, id, showName = true) {
   return {
     id, actorId: actor.id, name: actor.name, showName, src: actor.img, visible: true,
-    height: 500, x: null, mirrored: false, filter: effectState(), particle: effectState(), tokenmagic: effectState(),
+    height: 500, x: null, offsetY: 0, mirrored: false, filter: effectState(), particle: effectState(), tokenmagic: effectState(),
   };
 }
 

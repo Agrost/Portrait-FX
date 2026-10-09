@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ClientPortraitView, normalizeClientView } from "../scripts/client-view.js";
 import { INITIAL_STATE, newPortrait } from "../scripts/model.js";
+import { PortraitStore } from "../scripts/store.js";
 
 function world() {
   return { ...structuredClone(INITIAL_STATE), portraits: ["a", "b"].map((id) => newPortrait({ id, name: id, img: `${id}.png` }, id)) };
@@ -79,7 +80,7 @@ test("a failed local save retains preferences and does not block the next change
 
 test("invalid local positions are discarded or bounded", () => {
   assert.deepEqual(normalizeClientView({ hidden: "true", positions: { a: -10, b: 110, c: "60", d: Infinity } }), {
-    hidden: false, positions: { a: 0, b: 100 }, mirrors: {},
+    hidden: false, positions: { a: 0, b: 100 }, mirrors: {}, positionEpoch: 0,
   });
 });
 
@@ -94,6 +95,42 @@ test("player flips only the selected local portrait and preserves GM and other c
   assert.equal(first.view.project(shared, { useMirrors: false }).portraits[0].mirrored, false);
   await first.view.flipPortrait(shared, "a");
   assert.equal(first.view.project(shared).portraits[0].mirrored, false);
+});
+
+test("GM arrangement invalidates every player's saved positions, including on reload, while keeping other preferences", async () => {
+  let shared = world();
+  shared.portraits[0].x = 65; shared.portraits[0].offsetY = 100; shared.portraits[0].height = 620;
+  shared.portraits[0].filter.enabled.neon = true;
+  const store = new PortraitStore({ read: () => shared, write: async (next) => { shared = next; }, canWrite: () => true });
+  const first = client({ positions: { a: 90, b: 10 }, mirrors: { a: true } });
+  const second = client({ positions: { a: 20, b: 80 }, hidden: true });
+  await store.arrangePortraits();
+  assert.equal(shared.positionEpoch, 1);
+  for (const player of [first, second, client(first.read())]) {
+    assert.deepEqual(player.view.project(shared).portraits.map((p) => p.x), [null, null]);
+    assert.equal(player.view.project(shared).portraits[0].offsetY, 100);
+    assert.equal(player.view.project(shared).portraits[0].height, 620);
+    assert.equal(player.view.project(shared).portraits[0].filter.enabled.neon, true);
+  }
+  assert.equal(first.view.project(shared).portraits[0].mirrored, true);
+  assert.ok(second.view.project(shared).portraits.every((p) => !p.visible));
+  assert.equal(first.writes.length, 0); assert.equal(second.writes.length, 0);
+  await first.view.setPosition("a", 55, shared.positionEpoch);
+  assert.deepEqual(first.view.project(shared).portraits.map((p) => p.x), [55, null]);
+  assert.equal(client(first.read()).view.project(shared).portraits[0].x, 55);
+  await store.arrangePortraits();
+  await first.view.movePortrait(shared, "b", 5);
+  assert.deepEqual(first.view.project(shared).portraits.map((p) => p.x), [null, 80]);
+});
+
+test("a late player save from before arrangement cannot restore the old positions", async () => {
+  const shared = world(), player = client({ positions: { a: 90 } });
+  const oldMove = player.view.setPosition("b", 10, 0);
+  shared.positionEpoch = 1;
+  await oldMove;
+  assert.deepEqual(player.view.project(shared).portraits.map((p) => p.x), [null, null]);
+  await player.view.setPosition("b", 60, 1);
+  assert.deepEqual(player.view.project(shared).portraits.map((p) => p.x), [null, 60]);
 });
 
 test("local orientation restores after reload, starts from GM orientation and survives hiding", async () => {

@@ -1,6 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeState, runtimeOptions, runtimeState, defaultValues, isParameterVisible, escapeHtml, registry } from "../scripts/model.js";
+import { normalizeHeightPresets } from "../scripts/height-presets.js";
+
+test("old portraits keep their dimensions and receive zero vertical offset; saved offsets are bounded", () => {
+  const state = normalizeState({ schemaVersion: 3, portraits: [
+    { id: "old", height: 400 }, { id: "up", offsetY: 800 },
+    { id: "down", offsetY: -800 }, { id: "invalid", offsetY: "bad" }, { id: "saved", offsetY: 125 },
+  ] });
+  assert.equal(state.portraits[0].height, 400);
+  assert.deepEqual(state.portraits.map((p) => p.offsetY), [0, 450, -450, 0, 125]);
+  assert.deepEqual(normalizeState(JSON.parse(JSON.stringify(state))), state);
+});
+
+test("height presets default to 450/500/560 and validate configured values", () => {
+  assert.deepEqual(normalizeHeightPresets(), { small: 450, normal: 500, large: 560 });
+  assert.deepEqual(normalizeHeightPresets({ small: 420, normal: 540, large: 620 }),
+    { small: 420, normal: 540, large: 620 });
+  assert.deepEqual(normalizeHeightPresets({ small: 1, normal: "bad", large: 800 }),
+    { small: 100, normal: 500, large: 700 });
+});
 
 class Effect {
   static get parameters() {

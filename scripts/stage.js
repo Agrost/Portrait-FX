@@ -58,6 +58,7 @@ export class PortraitStage {
       card.label.hidden = !portrait.showName;
       card.image.alt = portrait.showName ? portrait.name : "Портрет персонажа";
       card.element.dataset.portraitId = portrait.id;
+      card.element.style.bottom = `${portrait.offsetY ?? 0}px`;
       card.element.classList.toggle("fxp-draggable", this.canMove());
       card.art.style.transform = portrait.mirrored ? "scaleX(-1)" : "";
       this.element.append(card.element);
@@ -72,8 +73,11 @@ export class PortraitStage {
   }
 
   availableArea() {
-    const height = Math.max(0, ...(this.state?.portraits.filter((item) => item.visible).map((item) => item.height) ?? [500]));
-    return portraitArea(window.innerWidth, window.innerHeight, this.state?.bottom ?? 80, height, this.obstruction);
+    const visible = this.state?.portraits.filter((item) => item.visible) ?? [];
+    const lowest = Math.min(0, ...visible.map((item) => item.offsetY ?? 0));
+    const highest = Math.max(0, ...visible.map((item) => item.height + (item.offsetY ?? 0)));
+    return portraitArea(window.innerWidth, window.innerHeight, (this.state?.bottom ?? 80) + lowest,
+      highest - lowest, this.obstruction);
   }
 
   create(portrait) {
@@ -110,8 +114,9 @@ export class PortraitStage {
     // Thus increasing height remains visible beside an expanded sidebar.
     const referenceWidth = Math.min(500, maxHeight) * ratio;
     const requestedWidth = card.portrait.height * ratio;
+    const displayMaxHeight = Math.max(1, maxHeight - Math.max(0, card.portrait.offsetY ?? 0));
     const scale = Math.min(1, Math.max(1, area.width / Math.max(1, count) - 32) / referenceWidth,
-      maxHeight / card.portrait.height, Math.max(1, area.width - 32) / requestedWidth);
+      displayMaxHeight / card.portrait.height, Math.max(1, area.width - 32) / requestedWidth);
     const displayWidth = requestedWidth * scale;
     card.media.style.width = `${displayWidth}px`;
     card.media.style.height = `${card.portrait.height * scale}px`;

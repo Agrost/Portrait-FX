@@ -34,7 +34,7 @@ test("missing effect engine leaves appearance controls available and saved effec
     panel.kind = kind;
     const markup = panel.portraitMarkup(portrait);
     assert.match(markup, /Портреты работают без эффектов/);
-    assert.match(markup, /data-action="appearance"/);
+    assert.match(markup, /name="height"/);
     assert.doesNotMatch(markup, /data-action="toggle-effect"/);
     assert.deepEqual(panel.effectRegistry(), {});
     if (kind === "tokenmagic") {
@@ -254,9 +254,11 @@ test("keyboard navigation follows filtered actor rows and Escape returns focus t
   assert.equal(press("ArrowDown"), true);
 });
 
-test("appearance button opens and closes the same draft form and applying still saves portrait settings", async () => {
+test("appearance button opens and closes a plain form and slider edits save only the selected portrait", async () => {
   const { panel, store, writes, read } = fixture();
-  const fields = { src: { value: "new.png" }, height: { value: "620" }, x: { value: "35" } };
+  const fields = { height: { value: "620" }, offsetY: { value: "-120" } };
+  await store.editPortrait("a", (portrait) => { portrait.x = 35; });
+  writes.length = 0;
   const form = { hidden: true, elements: { namedItem: (name) => fields[name] } };
   panel.element.querySelector = () => form; panel.applyPosition = () => {};
   const expanded = []; const button = { dataset: { action: "appearance-toggle" }, setAttribute: (_, value) => expanded.push(value), classList: { toggle() {} } };
@@ -264,8 +266,200 @@ test("appearance button opens and closes the same draft form and applying still 
   click(); assert.equal(form.hidden, false); click(); assert.equal(form.hidden, true);
   assert.equal(fields.height.value, "620"); assert.equal(writes.length, 0);
   click(); assert.deepEqual(expanded, ["true", "false", "true"]);
-  panel.onClick({ target: { closest: () => ({ dataset: { action: "appearance" } }) } }); await store.pending;
-  assert.equal(read().portraits[0].src, "new.png"); assert.equal(read().portraits[0].height, 620); assert.equal(read().portraits[0].x, 35);
+  let projected;
+  panel.onAppearancePreview = () => { projected = panel.projectAppearance(store.state); };
+  for (const name of ["height", "offsetY"]) {
+    panel.onInput({ target: { name, value: fields[name].value, dataset: {}, closest: () => form } });
+  }
+  assert.equal(projected.portraits[0].height, 620); assert.equal(projected.portraits[0].offsetY, -120);
+  assert.equal(writes.length, 0);
+  panel.flushAppearance(); await store.pending;
+  assert.equal(read().portraits[0].src, "a.png"); assert.equal(read().portraits[0].height, 620);
+  assert.equal(read().portraits[0].x, 35); assert.equal(read().portraits[0].offsetY, -120);
+  assert.equal(read().portraits[1].offsetY, 0);
   assert.match(panel.portraitMarkup(store.state.portraits[0]), /data-action="appearance-toggle"/);
   assert.ok(!panel.portraitMarkup(store.state.portraits[0]).includes("<details"));
+  assert.doesNotMatch(panel.portraitMarkup(store.state.portraits[0]), /appearance-header|appearance-close|data-action="appearance"/);
+});
+
+test("size selection uses configured presets and custom entry survives rendering and adding an actor", async () => {
+  const { panel, store, read } = fixture();
+  let presets = { small: 420, normal: 530, large: 610 };
+  panel.readHeightPresets = () => presets;
+  const markup = panel.addHeightMarkup();
+  assert.match(markup, /Маленький \(420\)/); assert.match(markup, /Обычный \(530\)/);
+  assert.match(markup, /Большой \(610\)/); assert.equal(panel.addHeight, 530);
+  const custom = { hidden: true }, input = { value: "", focus() {} };
+  panel.element.querySelector = (selector) => selector.includes("custom-height") ? custom : input;
+  panel.applyPosition = () => {};
+  const choose = (value) => panel.onChange({ target: { dataset: { role: "add-height-preset" }, value } });
+  choose("large"); assert.equal(panel.addHeight, 610); assert.equal(custom.hidden, true);
+  choose("custom"); assert.equal(custom.hidden, false); assert.equal(input.value, 610);
+  panel.addHeight = "587";
+  presets = { small: 440, normal: 540, large: 620 };
+  panel.addHeightMarkup(); assert.equal(panel.addHeight, "587");
+  game.actors = { get: () => ({ id: "c", name: "C", img: "c.png" }) };
+  globalThis.foundry = { utils: { randomID: () => "custom" } };
+  panel.addActor("c"); await store.pending;
+  assert.equal(read().portraits.find((p) => p.id === "custom").height, 587);
+  choose("normal"); assert.equal(panel.addHeight, 540);
+});
+
+test("effects disclosure preserves a parameter draft and closing appearance preserves its draft", async () => {
+  const { panel, store, writes } = fixture();
+  const block = { hidden: true }, form = { hidden: false, draft: 630 };
+  const button = { dataset: { action: "effects-toggle" }, setAttribute() {}, classList: { toggle() {} } };
+  panel.element.querySelector = (selector) => selector === "#fxp-effects" ? block : selector.includes("appearance-toggle") ? button : form;
+  panel.applyPosition = () => {};
+  panel.appearanceOpen = true;
+  assert.equal(panel.effectsOpen, false);
+  panel.onClick({ target: { closest: () => button } }); assert.equal(block.hidden, false);
+  panel.onClick({ target: { closest: () => button } }); assert.equal(block.hidden, true);
+  button.dataset.action = "appearance-toggle";
+  panel.onClick({ target: { closest: () => button } });
+  assert.equal(form.hidden, true); assert.equal(form.draft, 630);
+  await store.pending; assert.equal(writes.length, 0);
+  const markup = panel.portraitMarkup(store.state.portraits[0]);
+  assert.doesNotMatch(markup, /name="(?:src|x)"|data-action="visibility"|↔/);
+  assert.match(markup, />Отразить<|>Отразить<\/button>/);
+  const blockStart = markup.indexOf('id="fxp-effects"');
+  const clear = markup.indexOf('data-action="clear"');
+  const clearAll = markup.indexOf('data-action="clear-all"');
+  assert.ok(blockStart < clear && clear < clearAll);
+});
+
+function rosterFixture(panel, ids) {
+  const buttons = ids.map((id, index) => ({
+    dataset: { id }, style: { order: "" }, classList: { add() {}, remove() {} },
+    animations: [], animate(frames) { this.animations.push(frames); },
+    getBoundingClientRect() {
+      const slot = this.style.order === "" ? index : Number(this.style.order);
+      const left = 100 + slot % 3 * 90, top = 100 + Math.floor(slot / 3) * 40;
+      return { left, right: left + 80, top, bottom: top + 30, width: 80, height: 30 };
+    },
+  }));
+  const roster = { querySelectorAll: () => buttons,
+    getBoundingClientRect: () => ({ left: 100, right: 420, top: 100, bottom: 100 + Math.ceil(ids.length / 3) * 40 }),
+  };
+  panel.element = { contains: () => true, querySelector: () => roster, querySelectorAll: () => buttons };
+  globalThis.window = {};
+  return { buttons, transfer: { setData() {} } };
+}
+
+test("dragging an unselected name previews its insertion before saving without selecting, hiding, or removing portraits", async () => {
+  const { panel, store, read } = fixture();
+  const { buttons, transfer } = rosterFixture(panel, ["a", "b"]);
+  const start = () => panel.startRosterDrag({ target: { closest: () => buttons[1] }, dataTransfer: transfer });
+  start();
+  const event = { clientX: 110, clientY: 110, dataTransfer: transfer, preventDefault() {} };
+  panel.overRosterDrag(event);
+  assert.deepEqual(panel.rosterPreviewOrder, ["b", "a"]);
+  assert.deepEqual(read().portraits.map((p) => p.id), ["a", "b"]);
+  assert.equal(buttons[0].style.order, "1"); assert.equal(buttons[0].animations.length, 1);
+  panel.dropRosterDrag(event);
+  await store.pending;
+  assert.deepEqual(read().portraits.map((p) => p.id), ["b", "a"]);
+  assert.ok(read().portraits.every((p) => p.visible));
+  assert.equal(panel.selectedId, "a"); assert.equal(panel.rosterDragId, null);
+  game.user.isGM = false;
+  start();
+  assert.equal(panel.rosterDragId, null);
+});
+
+test("dropping into trailing empty space works and cancellation restores a temporary wrapped order", async () => {
+  const { panel, store, read, writes } = fixture();
+  const { buttons, transfer } = rosterFixture(panel, ["a", "b"]);
+  panel.startRosterDrag({ target: { closest: () => buttons[0] }, dataTransfer: transfer });
+  const event = { clientX: 410, clientY: 115, dataTransfer: transfer, preventDefault() {} };
+  panel.overRosterDrag(event); assert.deepEqual(panel.rosterPreviewOrder, ["b", "a"]);
+  panel.clearRosterDrag();
+  assert.ok(buttons.every((button) => button.style.order === "")); assert.equal(writes.length, 0);
+  assert.deepEqual(read().portraits.map((p) => p.id), ["a", "b"]);
+  panel.startRosterDrag({ target: { closest: () => buttons[0] }, dataTransfer: transfer });
+  panel.dropRosterDrag(event); await store.pending;
+  assert.deepEqual(read().portraits.map((p) => p.id), ["b", "a"]);
+  assert.equal(panel.rosterDropTarget({ clientX: 10, clientY: 10 }), null);
+});
+
+test("rapid slider inputs preview immediately, save the latest draft, and cannot affect a newly selected actor", async () => {
+  const { panel, store, read, writes } = fixture();
+  let projected;
+  panel.onAppearancePreview = () => { projected = panel.projectAppearance(store.state); };
+  const input = (name, value) => panel.onInput({ target: { dataset: {}, name, value, closest: () => ({}) } });
+  input("height", "540"); input("height", "620"); input("offsetY", "150");
+  assert.equal(projected.portraits[0].height, 620); assert.equal(projected.portraits[0].offsetY, 150);
+  assert.equal(read().portraits[0].height, 500); assert.equal(writes.length, 0);
+  panel.selectPortrait("b"); input("height", "570");
+  panel.flushAppearance(); await store.pending;
+  assert.equal(read().portraits[0].height, 620); assert.equal(read().portraits[0].offsetY, 150);
+  assert.equal(read().portraits[1].height, 570); assert.equal(read().portraits[1].offsetY, 0);
+  assert.equal(writes.length, 2); assert.equal(panel.appearanceDrafts.size, 0);
+  input("height", "701"); input("offsetY", "451"); panel.flushAppearance(); await store.pending;
+  assert.equal(writes.length, 2);
+});
+
+test("pointer reorder preserves clicks, opens a live gap, and cancellation restores order without a write", async () => {
+  const { panel, store, read, writes } = fixture();
+  const { buttons } = rosterFixture(panel, ["a", "b"]);
+  let captured = false, captures = 0;
+  panel.element.setPointerCapture = () => { captured = true; captures++; };
+  panel.element.hasPointerCapture = () => captured;
+  panel.element.releasePointerCapture = () => { captured = false; };
+  const ghosts = [];
+  buttons[0].cloneNode = () => ({ style: {}, setAttribute() {}, remove() { this.removed = true; } });
+  globalThis.document = { body: { append: (ghost) => ghosts.push(ghost) } };
+  const start = { button: 0, pointerId: 1, clientX: 140, clientY: 115, target: { closest: () => buttons[0] } };
+  panel.startDrag(start); panel.endDrag(start);
+  assert.equal(captures, 0); assert.equal(writes.length, 0);
+  panel.startDrag(start);
+  const move = { pointerId: 1, buttons: 1, clientX: 410, clientY: 115, preventDefault() {} };
+  panel.moveDrag(move);
+  assert.equal(captured, true); assert.equal(ghosts.length, 1);
+  assert.deepEqual(panel.rosterPreviewOrder, ["b", "a"]); assert.equal(writes.length, 0);
+  panel.endDrag(move, true);
+  assert.equal(captured, false); assert.equal(ghosts[0].removed, true);
+  assert.ok(buttons.every((button) => button.style.order === ""));
+  assert.deepEqual(read().portraits.map((p) => p.id), ["a", "b"]);
+  panel.startDrag(start); panel.moveDrag(move); panel.endDrag(move);
+  await store.pending;
+  assert.deepEqual(read().portraits.map((p) => p.id), ["b", "a"]);
+  panel.onClick({ target: { closest: () => ({ dataset: { action: "select", id: "b" } }) } });
+  assert.equal(panel.selectedId, "a");
+});
+
+test("a slower earlier appearance save cannot replace a newer preview and the slider stays attached", async () => {
+  const { panel, store, read } = fixture();
+  let release;
+  const wait = new Promise((resolve) => { release = resolve; });
+  const write = store.write;
+  let count = 0;
+  store.write = async (state) => { if (count++ === 0) await wait; await write(state); };
+  let projected;
+  panel.onAppearancePreview = () => { projected = panel.projectAppearance(store.state); };
+  const input = { dataset: {}, name: "height", value: "550", closest: () => ({}) };
+  globalThis.document = { activeElement: input };
+  panel.renderedAppearanceStructure = panel.appearanceStructure();
+  panel.render = PortraitPanel.prototype.render;
+  Object.defineProperty(panel.element, "innerHTML", { set: () => assert.fail("Saving must keep the slider attached") });
+  store.onChange = () => { panel.render(); panel.onAppearancePreview(); };
+  panel.onInput({ target: input }); panel.flushAppearance();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  input.value = "620"; panel.onInput({ target: input }); panel.flushAppearance();
+  assert.equal(projected.portraits[0].height, 620);
+  release(); await store.pending;
+  assert.equal(projected.portraits[0].height, 620); assert.equal(read().portraits[0].height, 620);
+  assert.equal(panel.appearanceDrafts.size, 0);
+});
+
+test("an effect save during roster drag defers DOM replacement until the drag ends", () => {
+  const { panel } = fixture();
+  panel.render = PortraitPanel.prototype.render;
+  panel.rosterDragId = "a";
+  panel.element = { querySelectorAll: () => [] };
+  panel.render(); assert.equal(panel.rosterRenderPending, true);
+  let renders = 0;
+  panel.render = () => { renders++; };
+  panel.clearRosterDrag();
+  assert.equal(renders, 1); assert.equal(panel.rosterDragId, null);
+  assert.equal(panel.rosterRenderPending, false);
 });

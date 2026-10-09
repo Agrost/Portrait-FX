@@ -29,14 +29,15 @@ test("world startup initializes portraits and GM editing without an effect engin
       globalThis.ui = { notifications: { error: (m) => messages.push(m), warn: (m) => messages.push(m) } };
       const portrait = newPortrait({ id: "actor", name: "Mage", img: "mage.png" }, "p");
       portrait.filter.enabled.neon = true;
-      const values = new Map([["portraits", { ...INITIAL_STATE, portraits: [portrait] }]]);
+      const values = new Map([["portraits", { ...INITIAL_STATE, portraits: [portrait] }], ["normalHeight", 540]]);
+      const registered = new Map();
       globalThis.game = {
         user: { id: "gm", isGM: true }, world: { id: "test" },
         modules: new Map([["sanos-portrait-fx", {}], ...(oldPlus ? [
           ["fxmaster", { active: true }], ["fxmaster-plus", { active: true, api: {} }],
         ] : [])]),
         settings: {
-          register(_namespace, key, options) { if (!values.has(key)) values.set(key, options.default); },
+          register(namespace, key, options) { registered.set(`${namespace}.${key}`, options); if (!values.has(key)) values.set(key, options.default); },
           get(_namespace, key) { return values.get(key); },
           async set(_namespace, key, value) { values.set(key, value); },
         }, keybindings: { register() {} },
@@ -48,6 +49,17 @@ test("world startup initializes portraits and GM editing without an effect engin
       callbacks.get("ready")();
       assert.equal(game.modules.get("sanos-portrait-fx").api.open(), true);
       assert.equal(opened.effectsAvailable, false);
+      assert.equal(opened.addHeight, 540);
+      const categorySetting = registered.get("sanos-portrait-fx.actorCategories");
+      assert.equal(categorySetting.scope, "world");
+      assert.equal(categorySetting.config, false);
+      assert.deepEqual(categorySetting.default, { categories: [], assignments: {} });
+      assert.ok(opened.picker);
+      for (const [key, height] of [["smallHeight", 450], ["normalHeight", 500], ["largeHeight", 560]]) {
+        const options = registered.get(`sanos-portrait-fx.${key}`);
+        assert.equal(options.default, height); assert.equal(options.scope, "world"); assert.equal(options.config, true);
+        assert.deepEqual(options.range, { min: 100, max: 700, step: 1 });
+      }
       const stage = sections.find((section) => section.id === "fx-portraits-stage");
       assert.equal(stage.hidden, false);
       assert.equal(stage.children.length, 1);

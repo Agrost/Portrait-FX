@@ -46,7 +46,10 @@ export class PortraitStore {
 
   setAllVisible(visible) {
     return this.change((state) => {
-      for (const portrait of state.portraits) portrait.visible = visible;
+      for (const portrait of state.portraits) {
+        portrait.visible = visible;
+        if (visible) portrait.x = null;
+      }
     });
   }
 
@@ -96,9 +99,26 @@ export class PortraitStore {
 
   arrangePortraits() {
     return this.change((state) => {
+      state.positionEpoch += 1;
       for (const portrait of state.portraits) {
         if (portrait.visible) portrait.x = null;
       }
+    });
+  }
+
+  reorderPortrait(id, targetId, after = false) {
+    return this.change((state) => {
+      const index = state.portraits.findIndex((portrait) => portrait.id === id);
+      const targetIndex = state.portraits.findIndex((portrait) => portrait.id === targetId);
+      if (index < 0 || targetIndex < 0 || id === targetId) return;
+      const order = [...state.portraits];
+      const [portrait] = order.splice(index, 1);
+      const insertion = order.findIndex((item) => item.id === targetId) + Number(after);
+      order.splice(insertion, 0, portrait);
+      if (order.every((item, i) => item.id === state.portraits[i].id)) return;
+      state.portraits = order;
+      // Automatic slots make the screen follow the new roster order even after manual movement.
+      for (const item of state.portraits) item.x = null;
     });
   }
 

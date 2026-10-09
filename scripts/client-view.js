@@ -8,7 +8,8 @@ export function normalizeClientView(value) {
     .map(([id, x]) => [id, boundedNumber(x, 0, 100, 50)]));
   const mirrors = Object.fromEntries(Object.entries(safeRecord(record.mirrors))
     .filter(([id, mirrored]) => !["__proto__", "prototype", "constructor"].includes(id) && typeof mirrored === "boolean"));
-  return { hidden: record.hidden === true, positions, mirrors };
+  const positionEpoch = Math.floor(boundedNumber(record.positionEpoch ?? 0, 0, Number.MAX_SAFE_INTEGER, 0));
+  return { hidden: record.hidden === true, positions, mirrors, positionEpoch };
 }
 
 // This controller reads/writes client settings only. The shared portrait state
@@ -42,8 +43,19 @@ export class ClientPortraitView {
   }
 
   toggleHidden() { return this.change((next) => { next.hidden = !next.hidden; }); }
-  setPosition(id, x) { return this.change((next) => { next.positions[id] = boundedNumber(x, 0, 100, 50); }); }
+  setPosition(id, x, positionEpoch = this.state.positionEpoch) {
+    return this.change((next) => {
+      this.syncPositionEpoch(next, positionEpoch);
+      next.positions[id] = boundedNumber(x, 0, 100, 50);
+    });
+  }
   resetPositions() { return this.change((next) => { next.positions = {}; }); }
+
+  syncPositionEpoch(next, positionEpoch) {
+    if (next.positionEpoch === positionEpoch) return;
+    next.positions = {};
+    next.positionEpoch = positionEpoch;
+  }
 
   flipPortrait(world, id) {
     return this.change((next) => {
@@ -55,6 +67,7 @@ export class ClientPortraitView {
 
   movePortrait(world, id, delta) {
     return this.change((next) => {
+      this.syncPositionEpoch(next, world.positionEpoch ?? 0);
       const visible = world.portraits.filter((item) => item.visible);
       const index = visible.findIndex((item) => item.id === id);
       if (index < 0) return;
@@ -65,9 +78,10 @@ export class ClientPortraitView {
 
   project(world, { usePositions = true, useMirrors = true } = {}) {
     const result = clone(world);
+    const currentPositions = this.state.positionEpoch === (world.positionEpoch ?? 0);
     for (const portrait of result.portraits) {
       if (this.state.hidden) portrait.visible = false;
-      if (usePositions && Object.hasOwn(this.state.positions, portrait.id)) portrait.x = this.state.positions[portrait.id];
+      if (usePositions && currentPositions && Object.hasOwn(this.state.positions, portrait.id)) portrait.x = this.state.positions[portrait.id];
       if (useMirrors && Object.hasOwn(this.state.mirrors, portrait.id)) portrait.mirrored = this.state.mirrors[portrait.id];
     }
     return result;

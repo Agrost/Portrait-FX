@@ -69,6 +69,34 @@ test("plain portrait keeps saved effects intact without a runtime or effect libr
   assert.equal(frames.size, 0);
 });
 
+test("vertical offsets move individual cards and updates retain the live effect runtime", () => {
+  const { stage, card, created, ready } = fixture();
+  card.portrait.visible = true;
+  card.src = card.portrait.src;
+  card.element = { style: {}, dataset: {}, classList: { toggle() {} } };
+  card.art = { style: {}, append() {} }; card.label = {};
+  card.image.complete = true;
+  const other = {
+    ...card, element: { style: {}, dataset: {}, classList: { toggle() {} } },
+    media: { style: {}, append() {} }, art: { style: {} }, label: {},
+    image: { ...card.image, style: {} }, canvas: canvas(),
+    portrait: { ...card.portrait, id: "other", offsetY: 0 },
+  };
+  card.portrait.filter.enabled.neon = true;
+  other.portrait.filter = effectState();
+  stage.cards = new Map([["p", card], ["other", other]]);
+  stage.element = { style: {}, append() {} }; stage.canMove = () => false;
+  const state = { bottom: 80, portraits: [card.portrait, other.portrait] };
+  stage.render(state); ready();
+  const runtime = card.runtime;
+  card.portrait.offsetY = 150; stage.render(state);
+  assert.equal(card.element.style.bottom, "150px"); assert.equal(other.element.style.bottom, "0px");
+  assert.equal(stage.element.style.bottom, "80px");
+  assert.equal(card.runtime, runtime); assert.equal(created.length, 1);
+  card.portrait.offsetY = -120; stage.render(state);
+  assert.equal(card.element.style.bottom, "-120px"); assert.equal(card.runtime, runtime);
+});
+
 test("first filter keeps the source visible until textures and frame are ready", () => {
   const { stage, card, created, advance } = fixture();
   card.portrait.filter.enabled.neon = true; stage.update(card, 1);
@@ -250,6 +278,7 @@ test("opening GM settings selects the clicked portrait and expands an existing c
   const panel = Object.create(PortraitPanel.prototype);
   panel.store = { state: { portraits: [{ id: "a" }, { id: "b" }] } };
   panel.selectedId = "a"; panel.collapsed = true; panel.actorSearch = "маг";
+  panel.flushAppearance = () => {};
   const body = { scrollTop: 200 };
   let opens = 0;
   panel.open = () => { opens++; panel.element = { querySelector: () => body }; };

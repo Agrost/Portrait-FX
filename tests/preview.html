@@ -10,13 +10,15 @@
     .preview-info { padding: 30px; max-width: 630px; }
     .preview-info p { color: #adb9c7; line-height: 1.6; }
     .preview-info button { background: #554266; color: white; border: 1px solid #a897bc; border-radius: 7px; padding: 10px 16px; cursor: pointer; margin: 6px 8px 6px 0; }
-    #preview-role, #preview-open, #preview-sidebar { position: relative; z-index: 120; }
+    #preview-role, #preview-open, #preview-sidebar { position: relative; z-index: 105; }
     #sidebar { position: fixed; right: 0; top: 0; bottom: 0; width: 360px; background: #191e27; border-left: 1px solid #677186; z-index: 100; box-sizing: border-box; }
     #sidebar.collapsed { width: 40px; }
     #sidebar-content { padding: 20px 14px 20px 54px; }
     #sidebar.collapsed #sidebar-content { display: none; }
     #sidebar-tabs { position: absolute; left: 0; top: 0; bottom: 0; width: 40px; background: #2f3542; text-align: center; padding-top: 20px; box-sizing: border-box; }
     img { border: 1px solid #222; box-shadow: 0 0 3px #222; }
+    /* Application button defaults must not constrain portrait rows or thumbnails. */
+    button { display: inline-flex; align-items: center; justify-content: center; height: 48px; white-space: nowrap; }
     #preview-status { font-size: 13px; }
     #preview-notices { color: #e8bf9c; }
     /* Simulated application checkbox decoration: the panel must suppress these
