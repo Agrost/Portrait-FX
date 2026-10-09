@@ -1,0 +1,157 @@
+#fx-portraits-stage {
+  position: fixed; left: 0; right: 0; height: 0; z-index: 50;
+  overflow: visible;
+  pointer-events: none;
+}
+#fx-portraits-stage[hidden], #fx-portraits-panel [hidden], #fx-portraits-stage canvas[hidden],
+#fx-portraits-player-controls[hidden], #fx-portraits-player-controls [hidden] { display: none !important; }
+#fx-portraits-stage .fxp-portrait {
+  position: absolute; bottom: 0; margin: 0; padding: 0; width: max-content; height: auto;
+  display: flex; flex-direction: column; align-items: center; overflow: visible;
+  transform: translateX(-50%); min-width: 0;
+}
+#fx-portraits-stage .fxp-draggable { pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
+#fx-portraits-stage .fxp-draggable.is-dragging { cursor: grabbing; }
+#fx-portraits-stage .fxp-media { position: relative; }
+#fx-portraits-stage .fxp-art { position: absolute; inset: 0; }
+#fx-portraits-stage .fxp-portrait, #fx-portraits-stage .fxp-media, #fx-portraits-stage .fxp-art,
+#fx-portraits-stage img, #fx-portraits-stage canvas {
+  border: 0; outline: 0; box-shadow: none; background: transparent; box-sizing: border-box;
+}
+#fx-portraits-stage img, #fx-portraits-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 0; margin: 0; border-radius: 0; }
+#fx-portraits-stage .fxp-name {
+  display: block !important; visibility: visible !important; opacity: 1 !important;
+  position: absolute; right: 10px; bottom: 10px; z-index: 2; margin: 0; padding: 5px 12px;
+  color: #fff !important; background: #15151bd9; border: 1px solid #ffffff2e;
+  border-radius: 5px; text-align: right; font: 600 22px/1.3 sans-serif;
+  text-shadow: 0 1px 4px #000; overflow-wrap: anywhere; max-width: calc(100% - 20px);
+}
+#fx-portraits-stage .fxp-name[hidden] { display: none !important; }
+#fx-portraits-stage .fxp-load-error { min-width: 120px; }
+#fx-portraits-panel {
+  box-sizing: border-box;
+  position: fixed; right: 22px; top: 85px; width: min(430px, calc(100vw - 32px));
+  max-height: calc(100vh - 110px); z-index: 110; display: flex; flex-direction: column;
+  color: #eee8df; background: #191920; border: 1px solid #56505f; border-radius: 12px;
+  box-shadow: 0 12px 45px #000a; font: 14px/1.4 sans-serif;
+}
+#fx-portraits-panel * { box-sizing: border-box; }
+#fx-portraits-panel .fxp-panel-header {
+  display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
+  background: #25232c; border-radius: 12px 12px 0 0; border-bottom: 1px solid #49414f;
+  cursor: grab; touch-action: none; user-select: none; flex-shrink: 0;
+}
+#fx-portraits-panel.is-dragging .fxp-panel-header { cursor: grabbing; }
+#fx-portraits-panel.is-collapsed .fxp-panel-header { border-bottom: 0; border-radius: 12px; }
+#fx-portraits-panel .fxp-panel-header:focus-visible { outline: 2px solid #ccb0ed; outline-offset: 2px; }
+#fx-portraits-panel .fxp-panel-header strong { font-size: 17px; }
+#fx-portraits-panel .fxp-panel-header button { width: 30px; font-size: 22px; padding: 0; }
+#fx-portraits-panel .fxp-panel-body { overflow: auto; padding: 14px; min-height: 0; flex: 1; }
+#fx-portraits-panel .fxp-panel-footer { display: flex; justify-content: flex-end; flex-shrink: 0; height: 24px; }
+#fx-portraits-panel.is-resizing { user-select: none; }
+#fx-portraits-panel button, #fx-portraits-panel select, #fx-portraits-panel input {
+  font: inherit; color: inherit; border: 1px solid #55505e; border-radius: 6px;
+  background: #2c2934; padding: 6px 8px; min-height: 32px; box-shadow: none;
+}
+#fx-portraits-panel button { cursor: pointer; line-height: 1.25; width: auto; }
+#fx-portraits-panel .fxp-resize-handle { width: 24px; min-height: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: nwse-resize; touch-action: none; user-select: none; }
+#fx-portraits-panel button:hover { background: #454050; border-color: #b9a8d3; }
+#fx-portraits-panel button:focus-visible, #fx-portraits-panel input:focus-visible, #fx-portraits-panel select:focus-visible { outline: 2px solid #ccb0ed; outline-offset: 2px; }
+#fx-portraits-panel select { width: 100%; }
+#fx-portraits-panel select option { background: #292632; color: #eee8df; }
+#fx-portraits-panel input[type="checkbox"] {
+  appearance: auto; width: 16px; height: 16px; min-width: 16px; max-width: 16px;
+  min-height: 0; padding: 0; margin: 0; flex: 0 0 16px; accent-color: #b49ad8;
+}
+/* Foundry draws checkbox icons with pseudo-elements. Use the native checkbox
+   only inside this panel, so its tick is not painted twice. */
+#fx-portraits-panel input[type="checkbox"]::before,
+#fx-portraits-panel input[type="checkbox"]::after { content: none !important; display: none !important; }
+#fx-portraits-panel input[type="color"] { width: 44px; padding: 2px; }
+#fx-portraits-panel input[type="range"] { width: 100%; min-width: 50px; padding: 0; border: 0; accent-color: #b49ad8; }
+#fx-portraits-panel input[type="number"] { width: 78px; }
+#fx-portraits-panel .fxp-global, #fx-portraits-panel .fxp-portrait-actions,
+#fx-portraits-panel .fxp-effect-actions, #fx-portraits-panel .fxp-tabs { display: flex; gap: 8px; align-items: center; }
+#fx-portraits-panel .fxp-actor-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 0; }
+#fx-portraits-panel .fxp-actor-options img { width: 32px; height: 36px; object-fit: cover; object-position: top; flex: 0 0 32px; border: 0; box-shadow: none; background: transparent; }
+#fx-portraits-panel .fxp-actor-options { max-height: 220px; overflow: auto; border: 1px solid #55505e; border-radius: 6px; margin-top: 5px; padding: 4px; }
+#fx-portraits-panel .fxp-actor-search { width: 100%; min-width: 0; }
+#fx-portraits-panel .fxp-actor-row { display: flex; align-items: stretch; gap: 4px; margin-bottom: 4px; }
+#fx-portraits-panel .fxp-actor-row:last-child { margin-bottom: 0; }
+#fx-portraits-panel .fxp-actor-options .fxp-actor-option { flex: 1; min-width: 0; width: auto; display: flex; align-items: center; justify-content: flex-start; gap: 9px; text-align: left; margin: 0; }
+#fx-portraits-panel .fxp-actor-option[aria-selected="true"] { background: #534165; }
+#fx-portraits-panel .fxp-actor-options .fxp-favorite { flex: 0 0 32px; width: 32px; padding: 4px; margin: 0; display: flex; align-items: center; justify-content: center; color: #b6aabc; }
+#fx-portraits-panel .fxp-favorite svg { width: 22px; height: 22px; pointer-events: none; }
+#fx-portraits-panel .fxp-favorite path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+#fx-portraits-panel .fxp-favorite.is-favorite, #fx-portraits-panel .fxp-favorite:hover, #fx-portraits-panel .fxp-favorite:focus-visible { color: #ffd36a; }
+#fx-portraits-panel .fxp-favorite.is-favorite path, #fx-portraits-panel .fxp-favorite:hover path, #fx-portraits-panel .fxp-favorite:focus-visible path { fill: currentColor; }
+#fx-portraits-panel .fxp-add-name, #fx-portraits-panel .fxp-appearance .fxp-show-name { display: flex; gap: 7px; align-items: center; }
+#fx-portraits-panel .fxp-add-options { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin: 9px 0; }
+#fx-portraits-panel .fxp-add-name { margin: 0; font-size: 13px; }
+#fx-portraits-panel .fxp-add-height { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+#fx-portraits-panel .fxp-global { margin: 12px 0; justify-content: space-between; }
+#fx-portraits-panel .fxp-arrange { width: 100%; margin-bottom: 12px; }
+#fx-portraits-panel .fxp-global label { font-size: 12px; }
+#fx-portraits-panel .fxp-global input { width: 62px; }
+#fx-portraits-panel .fxp-roster { display: flex; flex-wrap: wrap; gap: 7px; padding-bottom: 12px; border-bottom: 1px solid #49414f; }
+#fx-portraits-panel .is-selected { background: #534165; border-color: #b49ad8; }
+#fx-portraits-panel .fxp-portrait-actions { margin: 12px 0; flex-wrap: wrap; }
+#fx-portraits-panel .fxp-danger { color: #e8a0a0; margin-left: auto; }
+#fx-portraits-panel .fxp-name-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+#fx-portraits-panel .fxp-name-actions button { flex: 1; }
+#fx-portraits-panel .fxp-rename { display: grid; gap: 8px; padding: 10px; border: 1px solid #55505e; border-radius: 6px; margin-bottom: 12px; }
+#fx-portraits-panel .fxp-rename label { display: grid; gap: 5px; }
+#fx-portraits-panel .fxp-rename input { width: 100%; }
+#fx-portraits-panel .fxp-rename > div { display: flex; gap: 8px; }
+#fx-portraits-panel .fxp-appearance { margin-bottom: 14px; }
+#fx-portraits-panel .fxp-appearance > button { width: 100%; }
+#fx-portraits-panel .fxp-appearance form { display: grid; gap: 8px; margin: 8px 0; }
+#fx-portraits-panel .fxp-appearance label { display: grid; gap: 4px; }
+#fx-portraits-panel .fxp-tabs { margin: 12px 0 8px; }
+#fx-portraits-panel .fxp-tabs button { flex: 1; }
+#fx-portraits-panel .fxp-active { display: flex; gap: 5px; flex-wrap: wrap; margin: 10px 0; color: #a9a1b4; font-size: 12px; }
+#fx-portraits-panel .fxp-active button { min-height: 26px; padding: 4px 6px; font-size: 12px; }
+#fx-portraits-panel .fxp-effect-actions { margin-bottom: 8px; }
+#fx-portraits-panel .fxp-effect-actions button { flex: 1; font-size: 12px; }
+#fx-portraits-panel .fxp-param { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid #34303e; }
+#fx-portraits-panel .fxp-param > label { flex: 1; min-width: 0; font-size: 12px; }
+#fx-portraits-panel .fxp-param > input[type="text"], #fx-portraits-panel .fxp-param > select { width: 180px; }
+#fx-portraits-panel .fxp-range { display: flex; align-items: center; width: 190px; gap: 7px; }
+#fx-portraits-panel .fxp-range input[type="number"] { width: 65px; }
+#fx-portraits-panel .fxp-color { display: flex; align-items: center; gap: 8px; }
+#fx-portraits-panel .fxp-color label { display: flex; gap: 4px; align-items: center; font-size: 11px; }
+#fx-portraits-panel .fxp-primary { width: 100%; background: #62487a; margin-top: 12px; border-color: #af92c5; }
+#fx-portraits-panel .fxp-clear { width: 100%; margin-top: 8px; color: #e2b7a4; }
+#fx-portraits-panel [data-action="clear-all"] { margin-bottom: 12px; }
+#fx-portraits-panel .fxp-hint, #fx-portraits-panel .fxp-empty { font-size: 12px; color: #aaa2b4; margin: 8px 0; }
+#fx-portraits-player-controls {
+  position: fixed; bottom: 0; left: 50%; transform: translate(-50%, calc(100% - 22px)); z-index: 110;
+  max-width: calc(100vw - 20px); width: max-content; display: grid; gap: 4px; padding: 0 6px 6px;
+  background: #191920ed; color: #eee8df; border: 1px solid #56505f; border-radius: 8px;
+  box-shadow: 0 4px 18px #0009; font: 14px/1.2 sans-serif;
+  transition: transform 160ms ease;
+}
+#fx-portraits-player-controls.is-revealed { transform: translate(-50%, 0); }
+#fx-portraits-player-controls * { box-sizing: border-box; }
+#fx-portraits-player-controls .fxp-player-main { display: flex; align-items: center; justify-content: center; gap: 5px; flex-wrap: wrap; }
+#fx-portraits-player-controls button, #fx-portraits-player-controls select {
+  font: inherit; color: inherit; background: #2c2934; border: 1px solid #55505e; border-radius: 5px;
+  height: 28px; min-height: 28px; line-height: 1.2; padding: 3px 8px; margin: 0; width: auto; box-shadow: none;
+}
+#fx-portraits-player-controls select { max-width: 180px; min-width: 100px; }
+#fx-portraits-player-controls button { cursor: pointer; }
+#fx-portraits-player-controls .fxp-player-handle { height: 21px; min-height: 21px; padding: 0 12px; border: 0; background: transparent; font-size: 12px; }
+#fx-portraits-player-controls button:hover { background: #454050; }
+#fx-portraits-player-controls button:disabled { opacity: 0.5; cursor: default; }
+#fx-portraits-player-controls button:focus-visible, #fx-portraits-player-controls select:focus-visible { outline: 2px solid #ccb0ed; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  #fx-portraits-player-controls { transition: none; }
+}
+@media (max-width: 650px) {
+  #fx-portraits-panel { right: 10px; top: 65px; max-height: calc(100vh - 80px); }
+}
+
+#fx-portraits-panel .fxp-macro { display: grid; gap: 8px; padding: 10px; margin: 8px 0; border: 1px solid #55505e; border-radius: 6px; }
+#fx-portraits-panel .fxp-macro label { display: grid; gap: 5px; }
+#fx-portraits-panel .fxp-macro textarea { box-sizing: border-box; width: 100%; min-height: 160px; resize: vertical; font: 12px/1.4 monospace; color: inherit; background: #201e27; border: 1px solid #55505e; border-radius: 5px; padding: 8px; }
+#fx-portraits-panel .fxp-macro-error { color: #ffb3aa; margin: 0; overflow-wrap: anywhere; }
