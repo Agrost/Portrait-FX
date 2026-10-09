@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><title>TokenMagic — проверка настоящих фильтров</title>
+<style>body{font:16px system-ui;background:#18151f;color:#eee;padding:24px}canvas{background:#302638;margin:8px;border:1px solid #807288}pre{white-space:pre-wrap}.fail{color:#ff8888}.pass{color:#99eebb}</style>
+<h1>TokenMagic: реальные фильтры, имитация Foundry</h1>
+<p>Загружаются исходные классы и шейдеры из соседней папки TokenMagic. Окружение Foundry имитируется. Это проверка WebGL, не игрового мира.</p>
+<button id="run">Повторить проверку всех фильтров</button><div id="samples"></div><pre id="results">Подготовка…</pre>
+<script src="/tests/vendor/pixi-7.4.3.min.js"></script>
+<script src="/tmfx/libs/filters/pixi-filters.js"></script>
+<script type="module">
+  const output = document.getElementById('results');
+  try {
+    if (!globalThis.PIXI) throw new Error('Не удалось загрузить PIXI');
+    let id = 0;
+    const merge = (target, source) => {
+      for (const [key, value] of Object.entries(source)) {
+        if (value && Object.getPrototypeOf(value) === Object.prototype && target[key] && typeof target[key] === 'object') merge(target[key], value);
+        else target[key] = value;
+      }
+      return target;
+    };
+    window.foundry = { utils: { randomID: () => `source-${++id}`, mergeObject: merge } };
+    window.game = { user: { isGM: true }, data: { userId: 'gm' }, modules: new Map([['tokenmagic', { active: true }]]), settings: { get: (_module, key) => key === 'minPadding' ? 0 : false }, video: { play: (source, { loop }) => { source.loop = loop; source.muted = true; return source.play(); }, stop: (source) => source.pause() } };
+    window.Color = class extends Number {
+      constructor(value) { super(typeof value === 'string' ? parseInt(value.replace('#',''),16) : value); }
+      applyRGB(array) { const value = Number(this); array[0] = (value >> 16 & 255)/255; array[1] = (value >> 8 & 255)/255; array[2] = (value & 255)/255; }
+    };
+    const native = new PIXI.Application({ width: 1, height: 1 });
+    window.canvas = { app: native, stage: native.stage, dimensions: { size: 100 } };
+    const [{ FilterType }, { Anime }, { presets }, { attachTokenMagic }, { frameReady }] = await Promise.all([
+      import('/tmfx/module/filters.js'), import('/tmfx/fx/Anime.js'), import('/tmfx/fx/presets/defaultpresets.js'),
+      import('/scripts/tokenmagic-runtime.js'), import('/scripts/frame-ready.js'),
+    ]);
+    window.TokenMagic = { filterTypes: FilterType, getPresets: () => presets, _getAnimeMap: Anime.getAnimeMap };
+    const image = document.createElement('canvas'); image.width = 180; image.height = 240;
+    const context = image.getContext('2d');
+    context.fillStyle = '#d2bc88'; context.beginPath(); context.arc(90,60,38,0,Math.PI*2); context.fill();
+    context.fillStyle = '#6853a3'; context.beginPath(); context.moveTo(60,100); context.lineTo(120,100); context.lineTo(165,230); context.lineTo(15,230); context.closePath(); context.fill();
+    const imagePath = image.toDataURL();
+    function factory() {
+      const view = document.createElement('canvas');
+      const app = new PIXI.Application({ view, width: 180, height: 240, backgroundAlpha: 0 });
+      app.ticker.stop();
+      const sprite = new PIXI.Sprite(PIXI.Texture.from(image)); app.stage.addChild(sprite);
+      const base = { app, _mediaSprite: sprite, _filters: [],
+        _syncMediaFilters() { sprite.filters = this._filters; sprite.visible = this._filters.length > 0; },
+        hasActiveFilters() { return this._filters.length > 0; },
+        destroy() { app.destroy(true, { children: true, texture: false, baseTexture: false }); },
+      };
+      const runtime = attachTokenMagic(base, TokenMagic, { width: 180, height: 240, canvas: view });
+      return { runtime, view };
+    }
+    const samples = [];
+    async function run() {
+      document.getElementById('run').disabled = true;
+      for (const sample of samples) sample.destroy(); samples.length = 0;
+      const errors = [], passed = [];
+      for (const [type] of Object.entries(FilterType)) {
+        let runtime;
+        try {
+          const built = factory(); runtime = built.runtime;
+          const source = presets.flatMap((p) => p.params).find((p) => p.filterType === type) ?? { filterType: type };
+          const params = structuredClone(source);
+          // Use a locally loaded texture for the texture-based filters.
+          if (['sprite','spriteMask','polymorph'].includes(type)) params.imagePath = imagePath;
+          if (type === 'distortion') params.maskPath = imagePath;
+          runtime.syncTokenMagic({ enabled: { sample: true }, options: { sample: { params: [params] } } });
+          const deadline = performance.now() + 5000;
+          while (!frameReady(runtime)) { if (performance.now() > deadline) throw new Error('Texture timeout'); await new Promise(requestAnimationFrame); }
+          await new Promise(requestAnimationFrame);
+          frameReady(runtime);
+          const pixels = runtime.app.renderer.extract.pixels(runtime.app.stage);
+          if (!pixels.some((value, index) => index % 4 === 3 && value > 0)) throw new Error('Empty rendered image');
+          passed.push(type);
+          if (['glow','xfire','electric','sprite','polymorph'].includes(type)) {
+            document.getElementById('samples').append(built.view);
+            const render = () => runtime.app.renderer.render(runtime.app.stage);
+            PIXI.Ticker.shared.add(render);
+            samples.push({ destroy() { PIXI.Ticker.shared.remove(render); runtime.destroy(); } });
+            runtime = null;
+          }
+        } catch (error) { errors.push(`${type}: ${error.stack ?? error}`); }
+        finally { runtime?.destroy(); }
+      }
+      output.textContent = `PASS ${passed.length}/${Object.keys(FilterType).length}\nNative animations after checks: ${Anime.getAnimeMap().size}\n${passed.join(', ')}\n${errors.join('\n\n')}`;
+      output.className = errors.length ? 'fail' : 'pass';
+      document.getElementById('run').disabled = false;
+    }
+    document.getElementById('run').onclick = run;
+    await run();
+  } catch (error) { output.textContent = error.stack ?? String(error); output.className = 'fail'; }
+</script></html>

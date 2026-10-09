@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sano’s Portrait FX — проверка интерфейса</title>
+  <link rel="stylesheet" href="../styles/portraits.css">
+  <style>
+    body { margin: 0; background: radial-gradient(ellipse at 35% 65%, #29343d, #0b1017 70%); color: #e8e3eb; min-height: 100vh; font: 16px sans-serif; }
+    .preview-info { padding: 30px; max-width: 630px; }
+    .preview-info p { color: #adb9c7; line-height: 1.6; }
+    .preview-info button { background: #554266; color: white; border: 1px solid #a897bc; border-radius: 7px; padding: 10px 16px; cursor: pointer; margin: 6px 8px 6px 0; }
+    #preview-role, #preview-open, #preview-sidebar { position: relative; z-index: 120; }
+    #sidebar { position: fixed; right: 0; top: 0; bottom: 0; width: 360px; background: #191e27; border-left: 1px solid #677186; z-index: 100; box-sizing: border-box; }
+    #sidebar.collapsed { width: 40px; }
+    #sidebar-content { padding: 20px 14px 20px 54px; }
+    #sidebar.collapsed #sidebar-content { display: none; }
+    #sidebar-tabs { position: absolute; left: 0; top: 0; bottom: 0; width: 40px; background: #2f3542; text-align: center; padding-top: 20px; box-sizing: border-box; }
+    img { border: 1px solid #222; box-shadow: 0 0 3px #222; }
+    #preview-status { font-size: 13px; }
+    #preview-notices { color: #e8bf9c; }
+    /* Simulated application checkbox decoration: the panel must suppress these
+       pseudo-elements while leaving the surrounding application's UI alone. */
+    input[type="checkbox"]::before { content: '□'; position: absolute; color: orange; }
+    input[type="checkbox"]:checked::after { content: '✓'; position: absolute; color: orange; }
+  </style>
+</head>
+<body>
+  <div class="preview-info">
+    <h1>Sano’s Portrait FX</h1>
+    <p>Стенд интерфейса. Foundry, FXMaster+ и TokenMagic здесь имитируются; видимые эффекты не являются настоящими шейдерами.</p>
+    <button id="preview-open">Открыть панель GM</button>
+    <button id="preview-role">Режим игрока</button>
+    <button id="preview-sidebar">Развернуть боковую панель Foundry</button>
+    <p><label><input id="preview-delay" type="checkbox" checked> Имитировать подготовку эффекта 1,5 с</label></p>
+    <p id="preview-status"></p>
+    <div id="preview-notices" role="status"></div>
+  </div>
+  <aside id="sidebar" class="collapsed" aria-label="Боковая панель Foundry (имитация)"><nav id="sidebar-tabs">☰</nav><div id="sidebar-content"><h2>Foundry</h2><p>Боковая панель — имитация чата и списков персонажей.</p></div></aside>
+  <script type="module">
+    const hooks = new Map();
+    window.Hooks = {
+      once(name, fn) { hooks.set(name, [...(hooks.get(name) ?? []), fn]); },
+      on(name, fn) { hooks.set(name, [...(hooks.get(name) ?? []), fn]); },
+    };
+    const settings = new Map();
+    const configs = new Map();
+    const keybindings = new Map();
+    let id = 0;
+    window.foundry = { utils: { randomID: () => `preview-${++id}` } };
+    window.ui = { notifications: {
+      error: (message) => { document.querySelector('#preview-notices').textContent = message; },
+      warn: (message) => { document.querySelector('#preview-notices').textContent = message; },
+    } };
+    ui.sidebar = { element: document.getElementById('sidebar'), expanded: false };
+    document.getElementById('preview-sidebar').onclick = () => {
+      ui.sidebar.expanded = !ui.sidebar.expanded;
+      ui.sidebar.element.classList.toggle('collapsed', !ui.sidebar.expanded);
+      document.getElementById('preview-sidebar').textContent = ui.sidebar.expanded ? 'Свернуть боковую панель Foundry' : 'Развернуть боковую панель Foundry';
+      for (const callback of hooks.get('collapseSidebar') ?? []) callback(ui.sidebar, !ui.sidebar.expanded);
+    };
+    function avatar(color, glyph) {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="480" viewBox="0 0 360 480"><path fill="${color}" d="M25 480 Q40 275 110 240 Q180 270 250 240 Q320 275 335 480Z"/><circle cx="180" cy="147" r="93" fill="#ead3c0"/><path fill="#26242e" d="M82 147 Q75 20 180 26 Q290 30 278 147 L254 96 Q178 143 116 91Z"/><circle cx="145" cy="153" r="7" fill="#26242e"/><circle cx="215" cy="153" r="7" fill="#26242e"/><path d="M155 192 Q180 208 205 192" stroke="#9c6268" stroke-width="5" fill="none"/><text x="180" y="378" text-anchor="middle" font-size="60" fill="#ddd">${glyph}</text></svg>`;
+      return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    }
+    const actors = [
+      { id: 'mage', name: 'Маг', img: avatar('#655086', '✦') },
+      { id: 'ranger', name: 'Следопыт', img: avatar('#365d50', '◈') },
+      { id: 'special', name: '<Персонаж "с кавычками">', img: avatar('#794949', '♢') },
+    ];
+    class Filter {
+      static label = 'Neon (имитация)';
+      static parameters = {
+        intensity: { type: 'range', label: 'Интенсивность', min: 0, max: 1, value: 0.45, step: 0.01 },
+        tint: { type: 'color', label: 'Цвет', value: { value: '#b289ff', apply: true } },
+        pulse: { type: 'checkbox', label: 'Пульсация', value: false },
+        speed: { type: 'range', label: 'Скорость пульсации', min: 0, max: 1, value: 0.5, step: 0.01, showWhen: { pulse: true } },
+      };
+    }
+    class Glitch extends Filter { static label = 'Glitch (имитация)'; }
+    class Water extends Filter { static label = 'Water'; }
+    class Particle {
+      static label = 'Fireflies (имитация)';
+      static parameters = {
+        density: { type: 'range', label: 'Плотность', min: 0, max: 1, value: 0.3, step: 0.01 },
+        tint: { type: 'color', label: 'Цвет', value: { value: '#ffe49b', apply: true } },
+        orbit: { type: 'checkbox', label: 'Орбита', value: false },
+        orbitDistance: { type: 'range', label: 'Размер орбиты', min: 0, max: 1, value: 0.5, step: 0.01, showWhen: { orbit: true } },
+      };
+    }
+    window.CONFIG = { fxmaster: { filterEffects: { neon: Filter, glitch: Glitch, water: Water }, particleEffects: { fireflies: Particle } } };
+    const stats = { created: 0, destroyed: 0 };
+    window.PIXI = { Texture: { EMPTY: { valid: false, destroyed: false, baseTexture: { valid: false } } } };
+    PIXI.Matrix = class { constructor() { this.a = this.d = 1; } };
+    PIXI.UPDATE_PRIORITY = { HIGH: 25 };
+    const tmCallbacks = new Set();
+    PIXI.Ticker = { shared: { lastTime: 0, add: (fn) => tmCallbacks.add(fn), remove: (fn) => tmCallbacks.delete(fn) } };
+    const tmTick = (now) => { PIXI.Ticker.shared.lastTime = now; for (const callback of tmCallbacks) callback(); requestAnimationFrame(tmTick); };
+    requestAnimationFrame(tmTick);
+    class MockTokenMagicFilter {
+      constructor(params) { Object.assign(this, params); this.padding = params.padding ?? 12; this.targetPlaceable = this.getPlaceable(); }
+      destroy() {}
+    }
+    const tmParams = [{ filterType: 'glow', color: 0xffaa44, outerStrength: 3, padding: 12 }];
+    window.TokenMagic = { filterTypes: Object.fromEntries(['glow', 'splash', 'smoke', 'flood', 'distortion', 'shadow', 'adjustment'].map(type => [type, MockTokenMagicFilter])), getPresets: () => [{ name: 'Glow (имитация)', params: tmParams }], _getAnimeMap: () => new Map() };
+    window.canvas = { tokens: { controlled: [{ document: { getFlag: () => [{ tmFilters: { tmParams: tmParams[0] } }] } }] } };
+    function status() {
+      document.querySelector('#preview-status').textContent = `Роль: ${game.user.isGM ? 'GM' : 'игрок'}. Создано обработчиков: ${stats.created}; освобождено: ${stats.destroyed}; активно: ${stats.created - stats.destroyed}.`;
+    }
+    class MockRuntime {
+      constructor({ canvas, width, height, media }) {
+        this.canvas = canvas; this.media = media; this.filters = {}; this.particles = {};
+        this.resize(width, height); this.closed = false; stats.created++; status();
+        this.texture = { valid: true, baseTexture: { valid: !document.querySelector('#preview-delay').checked } };
+        this._mediaSprite = { texture: this.texture, filters: [], visible: false, width, height };
+        this.originalWidth = width; this.originalHeight = height; this.pad = 0;
+        this.app = { stage: { children: [this._mediaSprite], position: { set: (x) => { this.pad = x; } } }, renderer: { render: () => this.draw(), resize: (w, h) => this.resize(w, h) } };
+        this.readyTimer = setTimeout(() => { this.texture.baseTexture.valid = true; }, 1500);
+        const frame = () => { if (this.closed) return; this.draw(); this.frame = requestAnimationFrame(frame); };
+        this.frame = requestAnimationFrame(frame);
+      }
+      resize(width, height) { this.canvas.width = width; this.canvas.height = height; }
+      sync(state) { this.particles = state; }
+      syncFilters(state) {
+        this.filters = state;
+        this.app.stage.children[0].filters = [{ uniforms: {
+          maskSampler: PIXI.Texture.EMPTY, uSdf: PIXI.Texture.EMPTY, haloSampler: PIXI.Texture.EMPTY,
+        } }];
+        this._syncMediaFilters();
+      }
+      _syncMediaFilters() { this._mediaSprite.filters = []; this._mediaSprite.visible = this.hasActiveFilters(); }
+      hasActiveFilters() { return Object.values(this.filters.enabled ?? {}).some(Boolean); }
+      draw() {
+        if (!this.texture.baseTexture.valid) return;
+        const ctx = this.canvas.getContext('2d'); const w = this.originalWidth; const h = this.originalHeight;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); ctx.save(); ctx.translate(this.pad, this.pad);
+        if (this.hasActiveFilters()) {
+          ctx.drawImage(this.media, 0, 0, w, h);
+          const option = Object.values(this.filters.options ?? {})[0];
+          ctx.globalCompositeOperation = 'source-atop'; ctx.globalAlpha = option?.intensity?.value ?? 0.45;
+          const tm = this._mediaSprite.filters.find((filter) => filter.filterType === 'glow');
+          ctx.fillStyle = tm ? `#${tm.color.toString(16).padStart(6, '0')}` : option?.tint?.value?.value ?? '#b289ff'; ctx.fillRect(0, 0, w, h);
+          ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.restore();
+        if (Object.values(this.particles.enabled ?? {}).some(Boolean)) {
+          const time = performance.now() / 900;
+          ctx.fillStyle = '#ffe49b';
+          for (let i = 0; i < 18; i++) { ctx.beginPath(); ctx.arc((Math.sin(time + i * 3) * 0.42 + 0.5) * w, (Math.cos(time * 0.4 + i) * 0.42 + 0.5) * h, 2, 0, Math.PI * 2); ctx.fill(); }
+        }
+      }
+      destroy() { if (this.closed) return; this.closed = true; clearTimeout(this.readyTimer); cancelAnimationFrame(this.frame); this.canvas.remove(); stats.destroyed++; status(); }
+    }
+    const modules = new Map([
+      ['sanos-portrait-fx', { active: true }], ['fxmaster', { active: true }],
+      ['tokenmagic', { active: true, version: '0.8.4' }],
+      ['fxmaster-plus', { active: true, api: { createViewerFxRuntime: (options) => new MockRuntime(options) } }],
+    ]);
+    window.game = {
+      user: { id: 'gm', isGM: true }, world: { id: 'preview-world' }, modules, actors: { contents: actors, get: (key) => actors.find((actor) => actor.id === key) },
+      i18n: { has: () => false, localize: (key) => key },
+      keybindings: { register(module, key, config) { keybindings.set(`${module}.${key}`, config); } },
+      settings: {
+        register(module, key, config) { configs.set(`${module}.${key}`, config); settings.set(`${module}.${key}`, structuredClone(config.default)); },
+        get(module, key) { return structuredClone(settings.get(`${module}.${key}`)); },
+        async set(module, key, value) {
+          if (!game.user.isGM && configs.get(`${module}.${key}`).scope === 'world') throw new Error('Only GM may write world settings');
+          settings.set(`${module}.${key}`, structuredClone(value)); configs.get(`${module}.${key}`).onChange?.(structuredClone(value)); return value;
+        },
+      },
+    };
+    await import('../scripts/main.js');
+    for (const callback of hooks.get('init') ?? []) callback();
+    for (const callback of hooks.get('ready') ?? []) callback();
+    document.addEventListener('keydown', (event) => {
+      if (event.altKey && event.code === 'KeyP') {
+        if (keybindings.get('sanos-portrait-fx.openPanel').onDown()) event.preventDefault();
+      }
+    });
+    const api = game.modules.get('sanos-portrait-fx').api;
+    document.querySelector('#preview-open').onclick = () => api.open();
+    document.querySelector('#preview-role').onclick = () => {
+      game.user.isGM = !game.user.isGM; api.close();
+      game.user.id = game.user.isGM ? 'gm' : 'player'; api.refresh();
+      document.querySelector('#preview-role').textContent = game.user.isGM ? 'Режим игрока' : 'Режим GM';
+      document.querySelector('#preview-open').disabled = !game.user.isGM; status();
+    };
+    status(); api.open();
+  </script>
+</body>
+</html>
